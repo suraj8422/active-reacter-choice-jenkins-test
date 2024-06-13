@@ -1,17 +1,11 @@
 pipeline {
     agent any
-
+    
     parameters {
         choice(
             name: 'environment',
             choices: ['staging', 'perf', 'smoke', 'prod'],
             description: 'Select the environment'
-        )
-        string(
-            name: 'regions',
-            description: 'Regions (comma separated)',
-            defaultValue: '',
-            trim: true
         )
         choice(
             name: 'deployType',
@@ -31,7 +25,7 @@ pipeline {
     }
 
     stages {
-        stage('Initialize') {
+        stage('Select Regions') {
             steps {
                 script {
                     // Define environment regions map
@@ -42,19 +36,34 @@ pipeline {
                         'perf': ['us-east-1']
                     ]
 
-                    // Fetch regions dynamically based on selected environment
+                    // Fetch regions based on selected environment
                     def selectedEnvironment = params.environment
-                    def regions = environmentRegions[selectedEnvironment]?.join(',')
+                    def regions = environmentRegions[selectedEnvironment]
 
-                    // Update the regions parameter dynamically
-                    currentBuild.rawBuild.getAction(ParametersAction.class).getParameters().each { param ->
-                        if (param.name == 'regions') {
-                            param.defaultValue = regions
-                        }
-                    }
+                    // Ask user to select regions dynamically
+                    def userInput = input(
+                        id: 'userInput', 
+                        message: 'Select Regions', 
+                        parameters: [
+                            choice(
+                                name: 'regions',
+                                choices: regions.join('\n'),
+                                description: 'Select regions'
+                            )
+                        ]
+                    )
 
-                    echo "Selected Environment: ${selectedEnvironment}"
-                    echo "Regions: ${regions}"
+                    // Set the regions parameter
+                    env.selectedRegions = userInput
+                }
+            }
+        }
+
+        stage('Initialize') {
+            steps {
+                script {
+                    echo "Environment: ${params.environment}"
+                    echo "Regions: ${env.selectedRegions}"
                     echo "Deploy Type: ${params.deployType}"
                     echo "Parallelism: ${params.parallelism}"
                     echo "Timestamp: ${params.timestamp}"
