@@ -1,31 +1,20 @@
 pipeline {
     agent any
     
+    environment {
+        // Placeholder for dynamically determined values
+        SELECTED_REGIONS = ''
+    }
+    
     parameters {
-        choice(
-            name: 'environment',
-            choices: ['staging', 'perf', 'smoke', 'prod'],
-            description: 'Select the environment'
-        )
-        choice(
-            name: 'deployType',
-            choices: ['regular update', 'restart from timestamp'],
-            description: 'Deploy type'
-        )
-        string(
-            name: 'parallelism',
-            description: 'Parallelism values for each region (comma separated, e.g., 2,3)',
-            trim: true
-        )
-        string(
-            name: 'timestamp',
-            description: 'Timestamp for restart (only applicable for restart deploy type)',
-            trim: true
-        )
+        choice(name: 'environment', choices: ['staging', 'perf', 'smoke', 'prod'], description: 'Select the environment')
+        choice(name: 'operation', choices: ['deploy', 'dry-run'], description: 'Select the operation')
+        string(name: 'parallelism', description: 'Parallelism values (comma separated, e.g., 2,3)', trim: true)
+        string(name: 'timestamp', description: 'Timestamp for restart (only applicable for restart deploy type)', trim: true)
     }
 
     stages {
-        stage('Select Regions') {
+        stage('User Input') {
             steps {
                 script {
                     // Define environment regions map
@@ -40,10 +29,10 @@ pipeline {
                     def selectedEnvironment = params.environment
                     def regions = environmentRegions[selectedEnvironment]
 
-                    // Ask user to select regions dynamically
+                    // Collect dynamic regions input
                     def userInput = input(
-                        id: 'userInput', 
-                        message: 'Select Regions', 
+                        id: 'userInput',
+                        message: "Preparing to deploy to ${selectedEnvironment}",
                         parameters: [
                             choice(
                                 name: 'regions',
@@ -52,25 +41,66 @@ pipeline {
                             )
                         ]
                     )
-
-                    // Set the regions parameter
-                    env.selectedRegions = userInput
+                    env.SELECTED_REGIONS = userInput
                 }
             }
         }
 
-        stage('Initialize') {
+        stage('Summary and Warnings') {
             steps {
                 script {
-                    echo "Environment: ${params.environment}"
-                    echo "Regions: ${env.selectedRegions}"
-                    echo "Deploy Type: ${params.deployType}"
-                    echo "Parallelism: ${params.parallelism}"
-                    echo "Timestamp: ${params.timestamp}"
+                    def summary = """
+                    Summary of Inputs:
+                    - Environment: ${params.environment}
+                    - Operation: ${params.operation}
+                    - Regions: ${env.SELECTED_REGIONS}
+                    - Parallelism: ${params.parallelism}
+                    - Timestamp: ${params.timestamp}
+                    """
+                    echo summary
+
+                    if (params.environment == 'smoke' && params.operation == 'deploy') {
+                        echo "Warning: Incompatible with smoke environment."
+                    }
                 }
             }
         }
 
-        // Add more stages as required
+        stage('Dry Run and Safeguards') {
+            steps {
+                script {
+                    if (params.operation == 'dry-run') {
+                        echo "Dry-run selected. Showing safeguards and warnings."
+                        // Simulate checks and display any warnings
+                    } else {
+                        echo "Proceeding with deployment."
+                    }
+                }
+            }
+        }
+
+        stage('Deploy') {
+            when {
+                expression { params.operation == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Deploying to environment: ${params.environment}"
+                    echo "Regions: ${env.SELECTED_REGIONS}"
+                    echo "Parallelism: ${params.parallelism}"
+                    echo "Timestamp: ${params.timestamp}"
+                    // Add deployment logic here
+                }
+            }
+        }
+
+        stage('Post-Execution') {
+            steps {
+                script {
+                    // Add any post-execution logic, such as providing links for verification
+                    echo "Execution complete. Check AWS processor for verification."
+                }
+            }
+        }
     }
 }
